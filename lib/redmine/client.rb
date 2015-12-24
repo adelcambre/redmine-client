@@ -51,7 +51,7 @@ module Redmine
     end
 
     def self.crud(plural, singular)
-      class_eval <<-EOF
+      class_eval <<-EOF, __FILE__, __LINE__
         def create_#{singular}(params, full_response=false)
           resp = faraday.post("/#{plural}.json", {"#{singular}" => params})
           check_errors(resp)
