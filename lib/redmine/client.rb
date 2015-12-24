@@ -5,8 +5,29 @@ require 'redmine/client/authorization_token'
 
 module Redmine
   class Client
+    class ResponseError < StandardError
+      attr_reader :response
+      def initialize(response)
+        @response = response
+      end
+
+      def body
+        response.body
+      end
+
+      def message
+        "Error #{response.status}: #{response.body}"
+      end
+    end
+
     class << self
       attr_accessor :base_url
+      attr_writer :raise_on_error
+      def raise_on_error?
+        return @raise_on_error if defined?(@raise_on_error)
+
+        @raise_on_error = true
+      end
     end
 
     attr_reader :base_url, :access_key
@@ -33,21 +54,25 @@ module Redmine
       class_eval <<-EOF
         def create_#{singular}(params, full_response=false)
           resp = faraday.post("/#{plural}.json", {"#{singular}" => params})
+          check_errors(resp)
           full_response ? resp : resp.body
         end
 
         def find_#{singular}(id, full_response=false)
           resp = faraday.get("/#{plural}/\#{id}.json")
+          check_errors(resp)
           full_response ? resp : resp.body
         end
 
         def update_#{singular}(id, params, full_response=false)
           resp = faraday.put("/#{plural}/\#{id}.json", {"#{singular}" => params})
+          check_errors(resp)
           full_response ? resp : resp.body
         end
 
-        def delete_#{singular}(id, full_response=false)
+        def delete_#{singular}(id, full_response=false, raise_on_error=true)
           resp = faraday.delete("/#{plural}/\#{id}.json")
+          check_errors(resp)
           full_response ? resp : resp.body
         end
       EOF
@@ -64,6 +89,15 @@ module Redmine
           "user_id"  => user_id,
           "role_ids" => Array(role_ids),
         }})
+    end
+
+    def check_errors(response)
+      return if response.success?
+      $stderr.puts "REDMINE ERROR (#{response.status}): #{response.body}"
+
+      if self.class.raise_on_error?
+        raise ResponseError.new(response)
+      end
     end
   end
 end
